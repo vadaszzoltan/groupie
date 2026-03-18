@@ -1,0 +1,23 @@
+{
+  "name": "group-watch-mvp",
+  "private": true,
+  "packageManager": "pnpm@10.6.5",
+  "scripts": {
+    "postinstall": "pnpm --filter @group-watch/shared build && pnpm --filter @group-watch/api prisma:generate",
+    "build": "pnpm --filter @group-watch/shared build && pnpm --filter @group-watch/api build && pnpm --filter @group-watch/web build",
+    "build:shared": "pnpm --filter @group-watch/shared build",
+    "build:api": "pnpm --filter @group-watch/api build",
+    "build:web": "pnpm --filter @group-watch/web build",
+    "dev": "pnpm --parallel --filter @group-watch/api --filter @group-watch/web dev",
+    "lint": "pnpm -r lint",
+    "format": "prettier --write .",
+    "test": "pnpm -r test",
+    "prisma:generate": "pnpm --filter @group-watch/api prisma:generate",
+    "prisma:migrate": "pnpm --filter @group-watch/api prisma:migrate",
+    "prisma:seed": "pnpm --filter @group-watch/api prisma:seed"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3"
+  }
+}
