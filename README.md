@@ -22,7 +22,7 @@ Copy `.env.example` to `.env` and update values.
 - `JWT_SECRET`: long random string used to sign JWTs.
 - `JWT_EXPIRES_IN`: token lifetime, for example `7d`.
 - `PORT`: API port, default `4000`.
-- `WEB_URL`: frontend origin used for API CORS.
+- `WEB_URL`: frontend origin for deployments.
 - `NEXT_PUBLIC_API_URL`: public API base URL consumed by Next.js.
 - `ENABLE_SCRAPE_SCHEDULER`: set to `true` to enable cron scraping.
 - `SCRAPE_CRON`: cron expression for scheduled scraping.
@@ -36,7 +36,6 @@ Copy `.env.example` to `.env` and update values.
 4. Optionally seed demo data with `pnpm prisma:seed`.
 5. Start both apps with `pnpm dev`.
 6. Open the web app at `http://localhost:3000` and the API at `http://localhost:4000`.
-7. Verify the health endpoint at `http://localhost:4000/health`.
 
 ## Available scripts
 
@@ -47,29 +46,24 @@ Copy `.env.example` to `.env` and update values.
 - `pnpm prisma:generate`
 - `pnpm prisma:migrate`
 - `pnpm prisma:seed`
-- `pnpm --filter @group-watch/api start`
-- `pnpm --filter @group-watch/web start`
 
 ## Railway deployment steps
 
-Railway should build from the **repository root** so the workspace package (`packages/shared`) is available to both apps.
-
 ### API service
 
-1. Create a Railway service from this repository and keep the root directory as the repo root.
+1. Create a Railway service rooted at `apps/api`.
 2. Attach a PostgreSQL plugin and copy its `DATABASE_URL` into the service variables.
-3. Set `JWT_SECRET`, `JWT_EXPIRES_IN`, `PORT`, `WEB_URL`, `ENABLE_SCRAPE_SCHEDULER`, `SCRAPE_CRON`, and optional `SEED_DEMO`.
-4. Configure build command: `pnpm install --frozen-lockfile && pnpm --filter @group-watch/api prisma:generate && pnpm --filter @group-watch/api build`.
-5. Configure start command: `pnpm --filter @group-watch/api start`.
-6. Configure a release command or one-time command: `pnpm --filter @group-watch/api exec prisma migrate deploy`.
-7. Point Railway health checks at `/health`.
+3. Set environment variables from `.env.example`.
+4. Configure build command: `pnpm install --frozen-lockfile && pnpm prisma:generate && pnpm build`.
+5. Configure start command: `pnpm start`.
+6. Run `pnpm prisma:migrate deploy` as a release command or one-time command.
 
 ### Web service
 
-1. Create a second Railway service from the same repository and keep the root directory as the repo root.
-2. Set `NEXT_PUBLIC_API_URL` to the deployed API URL.
-3. Configure build command: `pnpm install --frozen-lockfile && pnpm --filter @group-watch/web build`.
-4. Configure start command: `pnpm --filter @group-watch/web start`.
+1. Create a second Railway service rooted at `apps/web`.
+2. Set `NEXT_PUBLIC_API_URL` to the public API domain.
+3. Configure build command: `pnpm install --frozen-lockfile && pnpm build`.
+4. Configure start command: `pnpm start`.
 
 ## Security notes
 
@@ -82,6 +76,6 @@ Railway should build from the **repository root** so the workspace package (`pac
 ## Known limitations
 
 - The current UI uses lightweight inline styles for deployment simplicity.
-- Source editing is supported by the API but not yet exposed in the frontend.
+- Source editing is not exposed in the UI yet, although the API supports it.
 - The scraper normalization layer is generic and may need field mapping adjustments per actor.
 - Scheduled scraping runs in-process, so horizontal scaling should use a single API worker for cron execution.
