@@ -13,29 +13,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { ApifyClient } from 'apify-client';
+import { ApifyClient } from '@apify/client';
 import { LabelState, ScrapeRunStatus, TriggerType } from '@prisma/client';
 import type { JwtUser } from './common';
-import {
-  buildPagination,
-  DeduplicationService,
-  ensureOwned,
-  hashContent,
-  normalizeApifyRecord,
-  normalizeDate,
-  sanitizeToken,
-} from './common';
-import {
-  PostsQueryDto,
-  SourceDto,
-  TestApifyTokenDto,
-  UpdateApifyTokenDto,
-  UpdateLabelDto,
-  UpdateSourceDto,
-  UpsertDraftDto,
-} from './dtos';
-import { JwtAuthGuard } from './passport';
+import { buildPagination, ensureOwned, hashContent, normalizeApifyRecord, normalizeDate, sanitizeToken, DeduplicationService } from './common';
+import { PostsQueryDto, SourceDto, TestApifyTokenDto, UpdateApifyTokenDto, UpdateLabelDto, UpdateSourceDto, UpsertDraftDto } from './dtos';
 import { PrismaService } from './prisma.service';
+import { JwtAuthGuard } from './passport';
 
 @Injectable()
 export class SettingsService {
@@ -44,7 +28,7 @@ export class SettingsService {
   updateToken(userId: string, token: string) {
     return this.prisma.user.update({
       where: { id: userId },
-      data: { apifyToken: token.trim() },
+      data: { apifyToken: token },
       select: { id: true, email: true, updatedAt: true },
     });
   }
@@ -55,13 +39,9 @@ export class SettingsService {
   }
 
   async testToken(token: string) {
-    const client = new ApifyClient({ token: token.trim() });
+    const client = new ApifyClient({ token });
     const user = await client.user().get();
-    return {
-      success: true,
-      username: user?.username ?? 'unknown',
-      tokenPreview: sanitizeToken(token),
-    };
+    return { success: true, username: user?.username ?? 'unknown', tokenPreview: sanitizeToken(token) };
   }
 }
 
@@ -74,9 +54,7 @@ export class SourcesService {
   }
 
   create(userId: string, dto: SourceDto) {
-    return this.prisma.source.create({
-      data: { ...dto, userId, isActive: dto.isActive ?? true },
-    });
+    return this.prisma.source.create({ data: { ...dto, userId, isActive: dto.isActive ?? true } });
   }
 
   async get(userId: string, id: string) {
@@ -96,10 +74,7 @@ export class SourcesService {
 
   async toggle(userId: string, id: string) {
     const source = await this.get(userId, id);
-    return this.prisma.source.update({
-      where: { id },
-      data: { isActive: !source.isActive },
-    });
+    return this.prisma.source.update({ where: { id }, data: { isActive: !source.isActive } });
   }
 }
 
@@ -107,31 +82,16 @@ export class SourcesService {
 export class ScrapingService {
   constructor(private prisma: PrismaService, private dedupe: DeduplicationService) {}
 
-  async runForSource(
-    userId: string,
-    sourceId: string,
-    triggerType: TriggerType = TriggerType.manual,
-  ) {
+  async runForSource(userId: string, sourceId: string, triggerType: TriggerType = TriggerType.manual) {
     const source = ensureOwned(await this.prisma.source.findUnique({ where: { id: sourceId } }), userId);
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    if (!user.apifyToken) {
-      throw new BadRequestException('Apify token is not configured.');
-    }
+    if (!user.apifyToken) throw new BadRequestException('Apify token is not configured.');
 
-    const run = await this.prisma.scrapeRun.create({
-      data: { userId, sourceId, triggerType, status: ScrapeRunStatus.running },
-    });
+    const run = await this.prisma.scrapeRun.create({ data: { userId, sourceId, triggerType, status: ScrapeRunStatus.running } });
 
     try {
       const client = new ApifyClient({ token: user.apifyToken });
-      const actorRun = await client
-        .actor(source.actorId)
-        .call(source.actorInputJson as Record<string, unknown>);
-
-      if (!actorRun.defaultDatasetId) {
-        throw new BadRequestException('The Apify actor run did not produce a dataset.');
-      }
-
+      const actorRun = await client.actor(source.actorId).call(source.actorInputJson as Record<string, unknown>);
       const items = await client.dataset(actorRun.defaultDatasetId).listItems();
       const records = items.items as Record<string, unknown>[];
       let insertedCount = 0;
@@ -139,22 +99,15 @@ export class ScrapingService {
 
       for (const rawRecord of records) {
         const normalized = normalizeApifyRecord(rawRecord);
-        if (!normalized.url) {
-          continue;
-        }
+        if (!normalized.url) continue;
 
         const publishedAt = normalizeDate(normalized.publishedAt);
         const contentHash = hashContent(normalized.text || normalized.url);
-        const existing = await this.prisma.post.findFirst({
-          where: this.dedupe.buildWhere(source.id, normalized),
-        });
+        const existing = await this.prisma.post.findFirst({ where: this.dedupe.buildWhere(source.id, normalized) });
 
         if (existing) {
           duplicateCount += 1;
-          await this.prisma.post.update({
-            where: { id: existing.id },
-            data: { lastSeenAt: new Date() },
-          });
+          await this.prisma.post.update({ where: { id: existing.id }, data: { lastSeenAt: new Date() } });
           continue;
         }
 
@@ -175,18 +128,11 @@ export class ScrapingService {
         insertedCount += 1;
       }
 
-      await this.prisma.source.update({
-        where: { id: source.id },
-        data: { lastSuccessfulRunAt: new Date() },
-      });
-
+      await this.prisma.source.update({ where: { id: source.id }, data: { lastSuccessfulRunAt: new Date() } });
       return this.prisma.scrapeRun.update({
         where: { id: run.id },
         data: {
-          status:
-            duplicateCount > 0 && insertedCount > 0
-              ? ScrapeRunStatus.partial_success
-              : ScrapeRunStatus.success,
+          status: duplicateCount > 0 && insertedCount > 0 ? ScrapeRunStatus.partial_success : ScrapeRunStatus.success,
           apifyRunId: actorRun.id,
           fetchedCount: records.length,
           insertedCount,
@@ -198,11 +144,7 @@ export class ScrapingService {
       const message = error instanceof Error ? error.message : 'Unknown scraping failure';
       return this.prisma.scrapeRun.update({
         where: { id: run.id },
-        data: {
-          status: ScrapeRunStatus.failed,
-          errorMessage: message,
-          finishedAt: new Date(),
-        },
+        data: { status: ScrapeRunStatus.failed, errorMessage: message, finishedAt: new Date() },
       });
     }
   }
@@ -216,36 +158,20 @@ export class ScrapingService {
     return results;
   }
 
-  @Cron(process.env.SCRAPE_CRON ?? '0 */6 * * *', {
-    disabled: process.env.ENABLE_SCRAPE_SCHEDULER !== 'true',
-  })
+  @Cron(process.env.SCRAPE_CRON ?? '0 */6 * * *', { disabled: process.env.ENABLE_SCRAPE_SCHEDULER !== 'true' })
   async runScheduled() {
-    const users = await this.prisma.user.findMany({
-      where: {
-        apifyToken: { not: null },
-        sources: { some: { isActive: true } },
-      },
-      select: { id: true },
-    });
-
+    const users = await this.prisma.user.findMany({ where: { apifyToken: { not: null }, sources: { some: { isActive: true } } }, select: { id: true } });
     for (const user of users) {
       await this.runAll(user.id, TriggerType.scheduled);
     }
   }
 
   listRuns(userId: string) {
-    return this.prisma.scrapeRun.findMany({
-      where: { userId },
-      include: { source: true },
-      orderBy: { createdAt: 'desc' },
-    });
+    return this.prisma.scrapeRun.findMany({ where: { userId }, include: { source: true }, orderBy: { createdAt: 'desc' } });
   }
 
   async getRun(userId: string, id: string) {
-    return ensureOwned(
-      await this.prisma.scrapeRun.findUnique({ where: { id }, include: { source: true } }),
-      userId,
-    );
+    return ensureOwned(await this.prisma.scrapeRun.findUnique({ where: { id }, include: { source: true } }), userId);
   }
 }
 
@@ -254,32 +180,15 @@ export class PostsService {
   constructor(private prisma: PrismaService) {}
 
   async list(userId: string, query: PostsQueryDto) {
-    const where: Record<string, unknown> = { userId };
-
-    if (query.sourceId) {
-      where.sourceId = query.sourceId;
-    }
-
-    if (query.search) {
-      where.OR = [
-        { contentText: { contains: query.search, mode: 'insensitive' } },
-        { authorName: { contains: query.search, mode: 'insensitive' } },
-      ];
-    }
-
+    const where: any = { userId };
+    if (query.sourceId) where.sourceId = query.sourceId;
+    if (query.search) where.OR = [{ contentText: { contains: query.search, mode: 'insensitive' } }, { authorName: { contains: query.search, mode: 'insensitive' } }];
     if (query.dateFrom || query.dateTo) {
-      where.publishedAt = {} as Record<string, Date>;
-      if (query.dateFrom) {
-        (where.publishedAt as Record<string, Date>).gte = new Date(query.dateFrom);
-      }
-      if (query.dateTo) {
-        (where.publishedAt as Record<string, Date>).lte = new Date(query.dateTo);
-      }
+      where.publishedAt = {};
+      if (query.dateFrom) where.publishedAt.gte = new Date(query.dateFrom);
+      if (query.dateTo) where.publishedAt.lte = new Date(query.dateTo);
     }
-
-    if (query.label) {
-      where.label = { is: { label: query.label } };
-    }
+    if (query.label) where.label = { is: { label: query.label } }; 
 
     const [items, total] = await Promise.all([
       this.prisma.post.findMany({
@@ -296,33 +205,19 @@ export class PostsService {
   }
 
   async get(userId: string, id: string) {
-    return ensureOwned(
-      await this.prisma.post.findUnique({
-        where: { id },
-        include: {
-          source: true,
-          label: true,
-          draft: true,
-          labelEvents: { orderBy: { createdAt: 'desc' } },
-        },
-      }),
-      userId,
-    );
+    return ensureOwned(await this.prisma.post.findUnique({ where: { id }, include: { source: true, label: true, draft: true, labelEvents: { orderBy: { createdAt: 'desc' } } } }), userId);
   }
 
   async updateLabel(userId: string, postId: string, dto: UpdateLabelDto) {
     await this.get(userId, postId);
-
-    const label = await this.prisma.postLabel.upsert({
-      where: { userId_postId: { userId, postId } },
-      update: { label: dto.label, note: dto.note },
-      create: { userId, postId, label: dto.label, note: dto.note },
-    });
-
-    await this.prisma.postLabelEvent.create({
-      data: { userId, postId, label: dto.label, note: dto.note },
-    });
-
+    const [label] = await this.prisma.$transaction([
+      this.prisma.postLabel.upsert({
+        where: { userId_postId: { userId, postId } },
+        update: { label: dto.label, note: dto.note },
+        create: { userId, postId, label: dto.label, note: dto.note },
+      }),
+      this.prisma.postLabelEvent.create({ data: { userId, postId, label: dto.label, note: dto.note } }),
+    ]);
     return label;
   }
 
@@ -366,121 +261,34 @@ export class SettingsController {
 @UseGuards(JwtAuthGuard)
 @Controller('api/sources')
 export class SourcesController {
-  constructor(
-    private service: SourcesService,
-    private scraping: ScrapingService,
-  ) {}
-
-  @Get()
-  list(@Req() req: { user: JwtUser }) {
-    return this.service.list(req.user.sub);
-  }
-
-  @Post()
-  create(@Req() req: { user: JwtUser }, @Body() dto: SourceDto) {
-    return this.service.create(req.user.sub, dto);
-  }
-
-  @Get(':id')
-  get(@Req() req: { user: JwtUser }, @Param('id') id: string) {
-    return this.service.get(req.user.sub, id);
-  }
-
-  @Put(':id')
-  update(
-    @Req() req: { user: JwtUser },
-    @Param('id') id: string,
-    @Body() dto: UpdateSourceDto,
-  ) {
-    return this.service.update(req.user.sub, id, dto);
-  }
-
-  @Delete(':id')
-  delete(@Req() req: { user: JwtUser }, @Param('id') id: string) {
-    return this.service.delete(req.user.sub, id);
-  }
-
-  @Post(':id/toggle')
-  toggle(@Req() req: { user: JwtUser }, @Param('id') id: string) {
-    return this.service.toggle(req.user.sub, id);
-  }
-
-  @Post(':id/run')
-  run(@Req() req: { user: JwtUser }, @Param('id') id: string) {
-    return this.scraping.runForSource(req.user.sub, id);
-  }
+  constructor(private service: SourcesService, private scraping: ScrapingService) {}
+  @Get() list(@Req() req: { user: JwtUser }) { return this.service.list(req.user.sub); }
+  @Post() create(@Req() req: { user: JwtUser }, @Body() dto: SourceDto) { return this.service.create(req.user.sub, dto); }
+  @Get(':id') get(@Req() req: { user: JwtUser }, @Param('id') id: string) { return this.service.get(req.user.sub, id); }
+  @Put(':id') update(@Req() req: { user: JwtUser }, @Param('id') id: string, @Body() dto: UpdateSourceDto) { return this.service.update(req.user.sub, id, dto); }
+  @Delete(':id') delete(@Req() req: { user: JwtUser }, @Param('id') id: string) { return this.service.delete(req.user.sub, id); }
+  @Post(':id/toggle') toggle(@Req() req: { user: JwtUser }, @Param('id') id: string) { return this.service.toggle(req.user.sub, id); }
+  @Post(':id/run') run(@Req() req: { user: JwtUser }, @Param('id') id: string) { return this.scraping.runForSource(req.user.sub, id); }
 }
 
 @UseGuards(JwtAuthGuard)
 @Controller('api/scraping')
 export class ScrapingController {
   constructor(private service: ScrapingService) {}
-
-  @Post('run-all')
-  runAll(@Req() req: { user: JwtUser }) {
-    return this.service.runAll(req.user.sub);
-  }
-
-  @Get('runs')
-  list(@Req() req: { user: JwtUser }) {
-    return this.service.listRuns(req.user.sub);
-  }
-
-  @Get('runs/:id')
-  get(@Req() req: { user: JwtUser }, @Param('id') id: string) {
-    return this.service.getRun(req.user.sub, id);
-  }
-
-  @Post('sources/:id/run')
-  run(@Req() req: { user: JwtUser }, @Param('id') id: string) {
-    return this.service.runForSource(req.user.sub, id);
-  }
+  @Post('run-all') runAll(@Req() req: { user: JwtUser }) { return this.service.runAll(req.user.sub); }
+  @Get('runs') list(@Req() req: { user: JwtUser }) { return this.service.listRuns(req.user.sub); }
+  @Get('runs/:id') get(@Req() req: { user: JwtUser }, @Param('id') id: string) { return this.service.getRun(req.user.sub, id); }
+  @Post('sources/:id/run') run(@Req() req: { user: JwtUser }, @Param('id') id: string) { return this.service.runForSource(req.user.sub, id); }
 }
 
 @UseGuards(JwtAuthGuard)
 @Controller('api/posts')
 export class PostsController {
   constructor(private service: PostsService) {}
-
-  @Get()
-  list(@Req() req: { user: JwtUser }, @Query() query: PostsQueryDto) {
-    return this.service.list(req.user.sub, query);
-  }
-
-  @Get(':id')
-  get(@Req() req: { user: JwtUser }, @Param('id') id: string) {
-    return this.service.get(req.user.sub, id);
-  }
-
-  @Put(':id/label')
-  updateLabel(
-    @Req() req: { user: JwtUser },
-    @Param('id') id: string,
-    @Body() dto: UpdateLabelDto,
-  ) {
-    return this.service.updateLabel(req.user.sub, id, dto);
-  }
-
-  @Post(':id/draft')
-  createDraft(
-    @Req() req: { user: JwtUser },
-    @Param('id') id: string,
-    @Body() dto: UpsertDraftDto,
-  ) {
-    return this.service.upsertDraft(req.user.sub, id, dto.content);
-  }
-
-  @Put(':id/draft')
-  updateDraft(
-    @Req() req: { user: JwtUser },
-    @Param('id') id: string,
-    @Body() dto: UpsertDraftDto,
-  ) {
-    return this.service.upsertDraft(req.user.sub, id, dto.content);
-  }
-
-  @Delete(':id/draft')
-  deleteDraft(@Req() req: { user: JwtUser }, @Param('id') id: string) {
-    return this.service.deleteDraft(req.user.sub, id);
-  }
+  @Get() list(@Req() req: { user: JwtUser }, @Query() query: PostsQueryDto) { return this.service.list(req.user.sub, query); }
+  @Get(':id') get(@Req() req: { user: JwtUser }, @Param('id') id: string) { return this.service.get(req.user.sub, id); }
+  @Put(':id/label') updateLabel(@Req() req: { user: JwtUser }, @Param('id') id: string, @Body() dto: UpdateLabelDto) { return this.service.updateLabel(req.user.sub, id, dto); }
+  @Post(':id/draft') createDraft(@Req() req: { user: JwtUser }, @Param('id') id: string, @Body() dto: UpsertDraftDto) { return this.service.upsertDraft(req.user.sub, id, dto.content); }
+  @Put(':id/draft') updateDraft(@Req() req: { user: JwtUser }, @Param('id') id: string, @Body() dto: UpsertDraftDto) { return this.service.upsertDraft(req.user.sub, id, dto.content); }
+  @Delete(':id/draft') deleteDraft(@Req() req: { user: JwtUser }, @Param('id') id: string) { return this.service.deleteDraft(req.user.sub, id); }
 }

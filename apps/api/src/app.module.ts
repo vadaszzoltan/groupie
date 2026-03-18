@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -17,7 +16,6 @@ import { HealthController } from './health';
       isGlobal: true,
       validate: (config) => envSchema.parse(config),
     }),
-    PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       global: true,
       useFactory: (configService: ConfigService) => ({

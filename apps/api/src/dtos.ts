@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsObject, IsOptional, IsString, IsUrl, Max, Min, MinLength, IsDateString, IsEmail } from 'class-validator';
+import { IsBoolean, IsEmail, IsEnum, IsInt, IsJSON, IsNotEmpty, IsObject, IsOptional, IsString, IsUrl, Max, Min, MinLength } from 'class-validator';
 import { LABEL_OPTIONS, SOURCE_PLATFORM_OPTIONS } from '@group-watch/shared';
 
 export class RegisterDto {
@@ -26,7 +26,7 @@ export class SourceDto {
   @IsNotEmpty()
   name!: string;
 
-  @IsIn(SOURCE_PLATFORM_OPTIONS)
+  @IsEnum(SOURCE_PLATFORM_OPTIONS)
   platform!: (typeof SOURCE_PLATFORM_OPTIONS)[number];
 
   @IsUrl()
@@ -37,7 +37,6 @@ export class SourceDto {
   groupExternalId?: string;
 
   @IsString()
-  @IsNotEmpty()
   actorId!: string;
 
   @IsObject()
@@ -48,37 +47,7 @@ export class SourceDto {
   isActive?: boolean;
 }
 
-export class UpdateSourceDto {
-  @IsOptional()
-  @IsString()
-  @IsNotEmpty()
-  name?: string;
-
-  @IsOptional()
-  @IsIn(SOURCE_PLATFORM_OPTIONS)
-  platform?: (typeof SOURCE_PLATFORM_OPTIONS)[number];
-
-  @IsOptional()
-  @IsUrl()
-  groupUrl?: string;
-
-  @IsOptional()
-  @IsString()
-  groupExternalId?: string;
-
-  @IsOptional()
-  @IsString()
-  @IsNotEmpty()
-  actorId?: string;
-
-  @IsOptional()
-  @IsObject()
-  actorInputJson?: Record<string, unknown>;
-
-  @IsOptional()
-  @IsBoolean()
-  isActive?: boolean;
-}
+export class UpdateSourceDto extends SourceDto {}
 
 export class PostsQueryDto {
   @IsOptional()
@@ -86,7 +55,7 @@ export class PostsQueryDto {
   sourceId?: string;
 
   @IsOptional()
-  @IsIn(LABEL_OPTIONS)
+  @IsEnum(LABEL_OPTIONS)
   label?: (typeof LABEL_OPTIONS)[number];
 
   @IsOptional()
@@ -94,11 +63,11 @@ export class PostsQueryDto {
   search?: string;
 
   @IsOptional()
-  @IsDateString()
+  @IsString()
   dateFrom?: string;
 
   @IsOptional()
-  @IsDateString()
+  @IsString()
   dateTo?: string;
 
   @IsOptional()
@@ -116,7 +85,7 @@ export class PostsQueryDto {
 }
 
 export class UpdateLabelDto {
-  @IsIn(LABEL_OPTIONS)
+  @IsEnum(LABEL_OPTIONS)
   label!: (typeof LABEL_OPTIONS)[number];
 
   @IsOptional()

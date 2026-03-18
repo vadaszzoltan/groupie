@@ -13,7 +13,7 @@
     "prisma:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "apify-client": "^2.12.5",
+    "@apify/client": "^2.12.5",
     "@group-watch/shared": "workspace:*",
     "@nestjs/common": "^10.4.15",
     "@nestjs/config": "^3.3.0",
