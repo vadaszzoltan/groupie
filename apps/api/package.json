@@ -3,8 +3,8 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "build": "nest build",
-    "dev": "nest start --watch",
+    "build": "pnpm --dir ../.. --filter @group-watch/shared build && prisma generate && nest build -p tsconfig.build.json",
+    "dev": "prisma generate && nest start --watch",
     "start": "node dist/main",
     "lint": "tsc --noEmit -p tsconfig.json",
     "test": "jest --runInBand",

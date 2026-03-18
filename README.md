@@ -4,9 +4,9 @@ A Railway-ready pnpm monorepo MVP for watching external community sources, inges
 
 ## Architecture summary
 
-- `apps/api`: NestJS API with JWT auth, Prisma/PostgreSQL persistence, Apify integration, source management, scraping run logs, labels, drafts, and a scheduler.
+- `apps/api`: NestJS API with JWT auth, Prisma/PostgreSQL persistence, Apify integration, source management, scraping run logs, labels, drafts, and a scheduler. The API uses the standard `@prisma/client` package generated from `apps/api/prisma/schema.prisma`, and the API build script now runs `prisma generate` before `nest build`.
 - `apps/web`: Next.js dashboard with login/register, protected pages, source management, post review, run history, and settings.
-- `packages/shared`: shared TypeScript types/constants used across the monorepo.
+- `packages/shared`: shared TypeScript types/constants used across the monorepo and built to `dist/` for runtime resolution by the API and web apps.
 
 ## Monorepo structure
 
@@ -30,7 +30,7 @@ Copy `.env.example` to `.env` and update values.
 
 ## Local run instructions
 
-1. Install dependencies with `pnpm install`.
+1. Install dependencies with `pnpm install`. This runs the root `postinstall` hook to build `@group-watch/shared` and generate the Prisma client for the API.
 2. Generate Prisma client with `pnpm prisma:generate`.
 3. Apply database migration with `pnpm prisma:migrate`.
 4. Optionally seed demo data with `pnpm prisma:seed`.
@@ -41,10 +41,13 @@ Copy `.env.example` to `.env` and update values.
 ## Available scripts
 
 - `pnpm dev`
-- `pnpm build`
+- `pnpm build` (builds shared first, then API, then web)
 - `pnpm lint`
 - `pnpm test`
 - `pnpm prisma:generate`
+- `pnpm build:shared`
+- `pnpm build:api`
+- `pnpm build:web`
 - `pnpm prisma:migrate`
 - `pnpm prisma:seed`
 - `pnpm --filter @group-watch/api start`
@@ -59,7 +62,7 @@ Railway should build from the **repository root** so the workspace package (`pac
 1. Create a Railway service from this repository and keep the root directory as the repo root.
 2. Attach a PostgreSQL plugin and copy its `DATABASE_URL` into the service variables.
 3. Set `JWT_SECRET`, `JWT_EXPIRES_IN`, `PORT`, `WEB_URL`, `ENABLE_SCRAPE_SCHEDULER`, `SCRAPE_CRON`, and optional `SEED_DEMO`.
-4. Configure build command: `pnpm install && pnpm --filter @group-watch/api prisma:generate && pnpm --filter @group-watch/api build`.
+4. Configure build command: `pnpm install && pnpm build:api`. The API build script itself builds `@group-watch/shared`, runs `prisma generate`, and then compiles Nest with `tsconfig.build.json` so test files and `prisma/seed.ts` are excluded from the production build.
 5. Configure start command: `pnpm --filter @group-watch/api start`.
 6. Configure a release command or one-time command: `pnpm --filter @group-watch/api exec prisma migrate deploy`.
 7. Point Railway health checks at `/health`.
@@ -68,7 +71,7 @@ Railway should build from the **repository root** so the workspace package (`pac
 
 1. Create a second Railway service from the same repository and keep the root directory as the repo root.
 2. Set `NEXT_PUBLIC_API_URL` to the deployed API URL.
-3. Configure build command: `pnpm install && pnpm --filter @group-watch/web build`.
+3. Configure build command: `pnpm install && pnpm build:web`. The root install step already builds `@group-watch/shared` for workspace runtime resolution.
 4. Configure start command: `pnpm --filter @group-watch/web start`.
 
 ## Security notes
