@@ -314,7 +314,7 @@ export class PostsService {
     await this.get(userId, postId);
 
     const label = await this.prisma.postLabel.upsert({
-      where: { postId },
+      where: { userId_postId: { userId, postId } },
       update: { label: dto.label, note: dto.note },
       create: { userId, postId, label: dto.label, note: dto.note },
     });
@@ -329,7 +329,7 @@ export class PostsService {
   async upsertDraft(userId: string, postId: string, content: string) {
     await this.get(userId, postId);
     return this.prisma.postDraft.upsert({
-      where: { postId },
+      where: { userId_postId: { userId, postId } },
       update: { content },
       create: { userId, postId, content },
     });
@@ -337,7 +337,7 @@ export class PostsService {
 
   async deleteDraft(userId: string, postId: string) {
     await this.get(userId, postId);
-    await this.prisma.postDraft.deleteMany({ where: { postId } });
+    await this.prisma.postDraft.deleteMany({ where: { userId, postId } });
     return { success: true };
   }
 }

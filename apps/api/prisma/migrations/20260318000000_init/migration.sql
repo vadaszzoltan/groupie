@@ -83,7 +83,7 @@ CREATE TABLE "PostLabel" (
   CONSTRAINT "PostLabel_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT "PostLabel_postId_fkey" FOREIGN KEY ("postId") REFERENCES "Post"("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
-CREATE UNIQUE INDEX "PostLabel_postId_key" ON "PostLabel"("postId");
+CREATE UNIQUE INDEX "PostLabel_userId_postId_key" ON "PostLabel"("userId", "postId");
 
 CREATE TABLE "PostLabelEvent" (
   "id" TEXT PRIMARY KEY,
@@ -107,4 +107,4 @@ CREATE TABLE "PostDraft" (
   CONSTRAINT "PostDraft_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT "PostDraft_postId_fkey" FOREIGN KEY ("postId") REFERENCES "Post"("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
-CREATE UNIQUE INDEX "PostDraft_postId_key" ON "PostDraft"("postId");
+CREATE UNIQUE INDEX "PostDraft_userId_postId_key" ON "PostDraft"("userId", "postId");
