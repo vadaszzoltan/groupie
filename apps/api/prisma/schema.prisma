@@ -1,0 +1,151 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SourcePlatform {
+  facebook_group
+}
+
+enum LabelState {
+  unreviewed
+  relevant
+  not_relevant
+}
+
+enum TriggerType {
+  manual
+  scheduled
+}
+
+enum ScrapeRunStatus {
+  pending
+  running
+  success
+  failed
+  partial_success
+}
+
+model User {
+  id             String           @id @default(cuid())
+  email          String           @unique
+  passwordHash   String
+  apifyToken     String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  sources        Source[]
+  posts          Post[]
+  scrapeRuns     ScrapeRun[]
+  postLabels     PostLabel[]
+  postLabelEvents PostLabelEvent[]
+  postDrafts     PostDraft[]
+}
+
+model Source {
+  id                  String      @id @default(cuid())
+  userId              String
+  name                String
+  platform            SourcePlatform @default(facebook_group)
+  groupUrl            String
+  groupExternalId     String?
+  actorId             String
+  actorInputJson      Json
+  isActive            Boolean     @default(true)
+  lastSuccessfulRunAt DateTime?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  posts               Post[]
+  scrapeRuns          ScrapeRun[]
+
+  @@index([userId, isActive])
+}
+
+model ScrapeRun {
+  id             String          @id @default(cuid())
+  userId         String
+  sourceId       String?
+  triggerType    TriggerType
+  apifyRunId     String?
+  status         ScrapeRunStatus @default(pending)
+  fetchedCount   Int             @default(0)
+  insertedCount  Int             @default(0)
+  duplicateCount Int             @default(0)
+  startedAt      DateTime        @default(now())
+  finishedAt     DateTime?
+  errorMessage   String?
+  createdAt      DateTime        @default(now())
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source         Source?         @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+}
+
+model Post {
+  id              String      @id @default(cuid())
+  userId          String
+  sourceId        String
+  externalPostId  String?
+  postUrl         String
+  authorName      String?
+  contentText     String
+  contentHash     String
+  publishedAt     DateTime?
+  firstSeenAt     DateTime    @default(now())
+  lastSeenAt      DateTime    @default(now())
+  rawPayloadJson  Json
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source          Source      @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  label           PostLabel?
+  labelEvents     PostLabelEvent[]
+  draft           PostDraft?
+
+  @@index([userId, sourceId, publishedAt])
+  @@unique([sourceId, externalPostId], map: "post_source_external_unique")
+  @@unique([sourceId, postUrl], map: "post_source_url_unique")
+  @@unique([sourceId, contentHash, publishedAt], map: "post_source_hash_published_unique")
+}
+
+model PostLabel {
+  id        String     @id @default(cuid())
+  userId    String
+  postId    String     @unique
+  label     LabelState @default(unreviewed)
+  note      String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+}
+
+model PostLabelEvent {
+  id        String     @id @default(cuid())
+  userId    String
+  postId    String
+  label     LabelState
+  note      String?
+  createdAt DateTime   @default(now())
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([userId, postId, createdAt])
+}
+
+model PostDraft {
+  id        String   @id @default(cuid())
+  userId    String
+  postId    String   @unique
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+}
