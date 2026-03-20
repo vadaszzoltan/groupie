@@ -1,8 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "declaration": false,
-    "rootDir": "./src"
+    "declaration": false
   },
   "include": ["src/**/*"],
   "exclude": ["test", "dist", "node_modules", "prisma"]
